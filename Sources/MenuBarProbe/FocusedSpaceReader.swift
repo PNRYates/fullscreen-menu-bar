@@ -64,6 +64,7 @@ final class FocusedSpaceReader {
     struct Focus: Equatable {
         let spaceID: UInt64
         let windowID: CGWindowID
+        let ownerPID: pid_t
         let window: FullScreenFocus
     }
 
@@ -115,7 +116,7 @@ final class FocusedSpaceReader {
               activeSpace(connection) == id,
               NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else { return nil }
 
-        return Focus(spaceID: id, windowID: windowID, window: FullScreenFocus(
+        return Focus(spaceID: id, windowID: windowID, ownerPID: app.processIdentifier, window: FullScreenFocus(
             appName: app.localizedName ?? app.bundleIdentifier ?? "App", bundleID: app.bundleIdentifier,
             displayID: displayID, displayName: screen.localizedName, notched: screen.safeAreaInsets.top > 0
         ))

@@ -52,10 +52,22 @@ struct BarSettings: Codable {
     }
 
     var enabled = true
+    var autoHideDuringPlayback = false
     var displays = DisplayRules(notched: .show, unnotched: .hide)
     var apps: [AppRule] = []
 
-    func mode(for bundleID: String?, notched: Bool) -> BarMode {
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try values.decode(Bool.self, forKey: .enabled)
+        autoHideDuringPlayback = try values.decodeIfPresent(Bool.self, forKey: .autoHideDuringPlayback) ?? false
+        displays = try values.decode(DisplayRules.self, forKey: .displays)
+        apps = try values.decode([AppRule].self, forKey: .apps)
+    }
+
+    func mode(for bundleID: String?, notched: Bool, playingMedia: Bool = false) -> BarMode {
+        if autoHideDuringPlayback && playingMedia { return .hide }
         let kind: DisplayKind = notched ? .notched : .unnotched
         return apps.first { $0.id == bundleID }?.modes[kind] ?? displays[kind] ?? .system
     }

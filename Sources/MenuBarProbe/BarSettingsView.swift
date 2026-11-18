@@ -44,6 +44,15 @@ struct BarSettingsView: View {
                     defaultRow(.notched, icon: "laptopcomputer")
                     Divider().padding(.horizontal, 12)
                     defaultRow(.unnotched, icon: "display")
+                    Divider().padding(.horizontal, 12)
+                    Toggle(isOn: Binding(get: { controller.settings.autoHideDuringPlayback },
+                                         set: controller.setAutoHideDuringPlayback)) {
+                        Label("Auto-hide during full-screen playback", systemImage: "play.rectangle")
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
                 }
                 .background(.quaternary.opacity(0.65), in: RoundedRectangle(cornerRadius: 10))
             }

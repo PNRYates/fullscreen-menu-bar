@@ -2,6 +2,8 @@
 
 Full Screen Bar applies menu bar rules to the **native full-screen window you’re using**. By default it keeps the menu bar visible on screens with a camera notch and auto-hides it on screens without one. Open **Settings** from the menu bar icon to change the display defaults. To add an exception, choose **Add App…** and pick an open app, or choose **Browse Applications…** if it isn’t running.
 
+Turn on **Auto-hide during full-screen playback** in Settings to override the display and app rules while the focused full-screen app signals playback. The normal rule returns when that signal stops. This is off by default and needs no browser extension. Detection uses Safari’s WebKit media playback assertion and video-related display wake locks, such as [Chromium’s Video Wake Lock](https://chromium.googlesource.com/chromium/src/+/a0743f978ed3dd32db13a1d1fb371ab21cca1b8b/third_party/blink/renderer/core/html/media/video_wake_lock.cc). The signal is app-wide: it can’t distinguish a full-screen video from a full-screen browser window playing media in another tab. Apps that don’t expose a recognised signal won’t trigger the override.
+
 The app changes macOS’s global full-screen setting, so other full-screen displays may change too. When the focused display defaults to Auto-Hide, the app keeps that full-screen setting ready on the desktop to avoid switching it after the next Space opens. The desktop menu bar itself is unaffected. macOS may still wait for pointer movement after a keyboard-only switch. Pausing rules or quitting restores your previous setting unless you’ve changed it yourself.
 
 ## Build and run

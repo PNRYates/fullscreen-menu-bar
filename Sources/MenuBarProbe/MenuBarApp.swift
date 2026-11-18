@@ -10,6 +10,7 @@ final class BarController: ObservableObject {
     private let store = UserDefaults.standard
     private let settingsKey = "BarSettings"
     private let reader = FocusedSpaceReader()
+    private var playback = MediaPlaybackReader()
     private var session: VisibilitySession?
     private var visibility: FocusedVisibilityController?
     private var settling = SpaceRuleTiming()
@@ -73,6 +74,11 @@ final class BarController: ObservableObject {
         }
     }
 
+    func setAutoHideDuringPlayback(_ enabled: Bool) {
+        settings.autoHideDuringPlayback = enabled
+        save()
+    }
+
     func setDefault(_ mode: BarMode, for kind: DisplayKind) {
         settings.displays[kind] = mode
         save()
@@ -110,14 +116,16 @@ final class BarController: ObservableObject {
 
     private func tick() {
         let observation = reader?.observe() ?? .unresolved
-        guard settling.shouldApply(observation, at: ProcessInfo.processInfo.systemUptime) else { return }
+        let time = ProcessInfo.processInfo.systemUptime
+        guard settling.shouldApply(observation, at: time) else { return }
         do {
             switch observation {
             case .fullScreen(let focus):
                 let window = focus.window
-                let mode = settings.mode(for: window.bundleID, notched: window.notched)
+                let playing = settings.autoHideDuringPlayback && playback.isPlaying(in: focus.ownerPID, at: time)
+                let mode = settings.mode(for: window.bundleID, notched: window.notched, playingMedia: playing)
                 try visibility?.update(mode.visibility)
-                updateStatus("\(window.appName) · \(mode.title)")
+                updateStatus("\(window.appName) · \(mode.title)\(playing ? " (playback)" : "")")
             case .desktop(let notched):
                 let defaultMode = settings.mode(for: nil, notched: notched)
                 try visibility?.update(defaultMode == .hide ? .hide : nil)
