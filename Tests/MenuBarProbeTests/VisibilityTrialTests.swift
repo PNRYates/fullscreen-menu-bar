@@ -100,7 +100,7 @@ final class VisibilityTrialTests: XCTestCase {
         XCTAssertFalse(timing.shouldApply(.desktop(notched: false), at: 1.6))
         XCTAssertFalse(timing.shouldApply(.desktop(notched: false), at: 1.8))
         let window = FullScreenFocus(appName: "Example", bundleID: nil, displayID: 1, displayName: "Example", notched: false)
-        XCTAssertTrue(timing.shouldApply(.fullScreen(.init(spaceID: 3, windowID: 4, window: window)), at: 1.9))
+        XCTAssertTrue(timing.shouldApply(.fullScreen(.init(spaceID: 3, windowID: 4, ownerPID: 5, window: window)), at: 1.9))
         XCTAssertFalse(timing.shouldApply(.unresolved, at: 2))
         XCTAssertTrue(timing.shouldApply(.unresolved, at: 2.8))
         XCTAssertFalse(timing.shouldApply(.desktop(notched: false), at: 3))
