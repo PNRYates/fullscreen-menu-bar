@@ -8,10 +8,14 @@ struct BarSettingsView: View {
         let icon: NSImage?
     }
 
+    private struct AppSelection: Identifiable {
+        let id = UUID()
+        let apps: [OpenApp]
+    }
+
     @ObservedObject var controller: BarController
     let chooseApp: () -> Void
-    @State private var openApps: [OpenApp] = []
-    @State private var showingAppPicker = false
+    @State private var appSelection: AppSelection?
 
     private let tint = Color(red: 0.29, green: 0.39, blue: 0.80)
     private let columns: [GridItem] = [GridItem(.flexible(minimum: 110)), GridItem(.fixed(132)), GridItem(.fixed(132)), GridItem(.fixed(22))]
@@ -49,8 +53,8 @@ struct BarSettingsView: View {
                     Text("App exceptions").font(.headline).accessibilityAddTraits(.isHeader)
                     Spacer()
                     Button(action: showAppPicker) { Label("Add App…", systemImage: "plus") }
-                        .popover(isPresented: $showingAppPicker, arrowEdge: .bottom) {
-                            appPickerPopover
+                        .popover(item: $appSelection, arrowEdge: .bottom) { selection in
+                            appPickerPopover(selection.apps)
                         }
                 }
                 if controller.settings.apps.isEmpty {
@@ -116,16 +120,16 @@ struct BarSettingsView: View {
 
     private func showAppPicker() {
         var seen = Set(controller.settings.apps.map(\.id))
-        openApps = NSWorkspace.shared.runningApplications.compactMap { app in
+        let openApps = NSWorkspace.shared.runningApplications.compactMap { app -> OpenApp? in
             guard app.activationPolicy == .regular, !app.isTerminated, let id = app.bundleIdentifier,
                   id != Bundle.main.bundleIdentifier, let name = app.localizedName,
                   seen.insert(id).inserted else { return nil }
             return OpenApp(id: id, name: name, icon: app.icon)
         }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        showingAppPicker = true
+        appSelection = AppSelection(apps: openApps)
     }
 
-    private var appPickerPopover: some View {
+    private func appPickerPopover(_ openApps: [OpenApp]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Open Apps").font(.headline)
             if openApps.isEmpty {
@@ -134,7 +138,7 @@ struct BarSettingsView: View {
                 List(openApps) { app in
                     Button {
                         controller.addApp(id: app.id, name: app.name)
-                        showingAppPicker = false
+                        appSelection = nil
                     } label: {
                         Label {
                             Text(app.name)
@@ -155,7 +159,7 @@ struct BarSettingsView: View {
             }
             Divider()
             Button("Browse Applications…") {
-                showingAppPicker = false
+                appSelection = nil
                 chooseApp()
             }
         }
