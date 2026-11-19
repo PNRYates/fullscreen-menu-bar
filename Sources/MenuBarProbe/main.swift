@@ -6,9 +6,9 @@ private enum FullScreenPreference {
     static let key = "AppleMenuBarVisibleInFullscreen"
     static let notification = Notification.Name("AppleInterfaceFullScreenMenuBarVisibilityChangedNotification")
 
-    static func read() throws -> Bool? {
-        try synchronise()
-        guard let value = CFPreferencesCopyValue(key as CFString, kCFPreferencesAnyApplication,
+    static func read(domain: CFString) throws -> Bool? {
+        try synchronise(domain)
+        guard let value = CFPreferencesCopyValue(key as CFString, domain,
                                                  kCFPreferencesCurrentUser, kCFPreferencesAnyHost) else {
             return nil
         }
@@ -18,17 +18,17 @@ private enum FullScreenPreference {
         return boolean
     }
 
-    static func write(_ value: Bool?) throws {
-        CFPreferencesSetValue(key as CFString, value.map { $0 as CFBoolean }, kCFPreferencesAnyApplication,
+    static func write(_ value: Bool?, domain: CFString) throws {
+        CFPreferencesSetValue(key as CFString, value.map { $0 as CFBoolean }, domain,
                               kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
-        try synchronise()
+        try synchronise(domain)
         DistributedNotificationCenter.default().postNotificationName(
             notification, object: nil, userInfo: nil, deliverImmediately: true
         )
     }
 
-    private static func synchronise() throws {
-        guard CFPreferencesSynchronize(kCFPreferencesAnyApplication, kCFPreferencesCurrentUser,
+    private static func synchronise(_ domain: CFString) throws {
+        guard CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser,
                                        kCFPreferencesAnyHost) else {
             throw ProbeError("Could not synchronise global preferences.")
         }
@@ -56,6 +56,7 @@ func listDisplays() {
 
 final class VisibilitySession {
     let trial: VisibilityTrial
+    let appRules: AppVisibilityRules
     private let fd: Int32
 
     init() throws {
@@ -71,10 +72,22 @@ final class VisibilitySession {
         }
         self.fd = fd
         trial = VisibilityTrial(journal: directory.appendingPathComponent("global-test.json"),
-                                read: FullScreenPreference.read, write: FullScreenPreference.write)
+                                read: { try FullScreenPreference.read(domain: kCFPreferencesAnyApplication) },
+                                write: { try FullScreenPreference.write($0, domain: kCFPreferencesAnyApplication) })
+        appRules = AppVisibilityRules(directory: directory, read: { id in
+            try FullScreenPreference.read(domain: id as CFString)
+        }, write: { id, value in
+            try FullScreenPreference.write(value, domain: id as CFString)
+        })
     }
 
     deinit { close(fd) }
+
+    func recover() throws -> VisibilityTrial.Outcome? {
+        let global = Result { try trial.recover() }
+        try appRules.recover()
+        return try global.get()
+    }
 }
 
 func withTrial<T>(_ action: (VisibilityTrial) throws -> T) throws -> T {
@@ -129,7 +142,7 @@ func run(_ arguments: [String]) throws {
     case "displays" where arguments.count == 1:
         listDisplays()
     case "status" where arguments.count == 1:
-        if let visible = try FullScreenPreference.read() {
+        if let visible = try FullScreenPreference.read(domain: kCFPreferencesAnyApplication) {
             print("Stored full-screen preference: \(visible ? "show" : "auto-hide")")
         } else {
             print("Stored full-screen preference: unset")
@@ -166,7 +179,7 @@ func run(_ arguments: [String]) throws {
             }
         }
     case "recover" where arguments.count == 1:
-        try withTrial { report(try $0.recover()) }
+        report(try VisibilitySession().recover())
     case "skylight" where arguments == ["skylight", "status"]:
         let skyLight = try SkyLightProbe()
         for (id, screen) in displays() {
