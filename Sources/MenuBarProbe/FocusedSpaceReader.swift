@@ -90,6 +90,40 @@ final class FocusedSpaceReader {
         return .unresolved
     }
 
+    func singleDisplayFullScreenApps(in bundleIDs: Set<String>) -> [String: DisplayKind] {
+        guard !bundleIDs.isEmpty,
+              let groups = managedSpaces(connection)?.takeRetainedValue() as? [[String: Any]] else { return [:] }
+        var ownership: [String: [DisplayKind?]] = [:]
+        for group in groups {
+            guard let spaces = group["Spaces"] as? [[String: Any]] else { return [:] }
+            for space in spaces {
+                guard let id = space["ManagedSpaceID"] as? UInt64 else { return [:] }
+                guard spaceType(connection, id) == 4 else { continue }
+                guard let layout = space["TileLayoutManager"] as? [String: Any],
+                      let tiles = layout["TileSpaces"] as? [[String: Any]], tiles.count == 1,
+                      let pid = space["pid"] as? pid_t,
+                      let app = NSRunningApplication(processIdentifier: pid),
+                      let bundleID = app.bundleIdentifier else { return [:] }
+                guard bundleIDs.contains(bundleID) else { continue }
+                let kind: DisplayKind?
+                if let wid = space["fs_wid"] as? CGWindowID, wid != 0,
+                   tiles[0]["TileWindowID"] as? CGWindowID == wid,
+                   let (displayID, screen) = display(for: id, containing: nil),
+                   !NSScreen.screensHaveSeparateSpaces || (group["Display Identifier"] as? String).flatMap(Self.displayID(for:)) == displayID {
+                    kind = screen.safeAreaInsets.top > 0 ? .notched : .unnotched
+                } else {
+                    kind = nil
+                }
+                ownership[bundleID, default: []].append(kind)
+            }
+        }
+        return Self.unambiguousDisplays(in: ownership)
+    }
+
+    nonisolated static func unambiguousDisplays(in ownership: [String: [DisplayKind?]]) -> [String: DisplayKind] {
+        ownership.compactMapValues { $0.count == 1 ? $0[0] : nil }
+    }
+
     private func current() -> Focus? {
         let id = activeSpace(connection)
         guard id != 0, spaceType(connection, id) == 4,
@@ -122,17 +156,17 @@ final class FocusedSpaceReader {
         ))
     }
 
+    private static func displayID(for identifier: String) -> CGDirectDisplayID? {
+        if identifier == "Main" { return CGMainDisplayID() }
+        guard let uuid = CFUUIDCreateFromString(nil, identifier as CFString) else { return nil }
+        return CGDisplayGetDisplayIDFromUUID(uuid)
+    }
+
     private func display(for spaceID: UInt64, containing window: CGRect?) -> (CGDirectDisplayID, NSScreen)? {
         let screens = displays().filter { CGDisplayIsActive($0.0) != 0 && CGDisplayIsInMirrorSet($0.0) == 0 }
         if NSScreen.screensHaveSeparateSpaces {
-            guard let uuid = screenForSpace(connection, spaceID)?.takeRetainedValue() else { return nil }
-            let id: CGDirectDisplayID
-            if uuid as String == "Main" {
-                id = CGMainDisplayID()
-            } else {
-                guard let cfUUID = CFUUIDCreateFromString(nil, uuid) else { return nil }
-                id = CGDisplayGetDisplayIDFromUUID(cfUUID)
-            }
+            guard let uuid = screenForSpace(connection, spaceID)?.takeRetainedValue(),
+                  let id = Self.displayID(for: uuid as String) else { return nil }
             return screens.first { screenID, _ in
                 screenID == id && (window.map { !$0.intersection(CGDisplayBounds(id)).isEmpty } ?? true)
             }

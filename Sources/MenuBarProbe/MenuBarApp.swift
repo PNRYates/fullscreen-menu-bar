@@ -25,7 +25,7 @@ final class BarController: ObservableObject {
         do {
             // A previous run may have stopped before it could restore the Mac setting.
             let session = try VisibilitySession()
-            _ = try session.trial.recover()
+            _ = try session.recover()
             guard settings.enabled else {
                 updateStatus("Rules paused")
                 return
@@ -55,7 +55,7 @@ final class BarController: ObservableObject {
         settling = SpaceRuleTiming()
         visibility = nil
         if let session {
-            do { _ = try session.trial.recover() }
+            do { _ = try session.recover() }
             catch { issue = "Couldn’t restore your Mac setting. Reopen Full Screen Bar to retry." }
         }
         session = nil
@@ -115,16 +115,33 @@ final class BarController: ObservableObject {
     }
 
     private func tick() {
-        let observation = reader?.observe() ?? .unresolved
-        let time = ProcessInfo.processInfo.systemUptime
-        guard settling.shouldApply(observation, at: time) else { return }
+        guard let session else { return }
         do {
+            let time = ProcessInfo.processInfo.systemUptime
+            let displays = reader?.singleDisplayFullScreenApps(in: settings.displayDependentAppIDs) ?? [:]
+            let observation = reader?.observe() ?? .unresolved
+            var scoped = settings.scopedVisibleExceptions(on: displays) { id in
+                NSRunningApplication.runningApplications(withBundleIdentifier: id).contains {
+                    playback.isPlaying(in: $0.processIdentifier, at: time)
+                }
+            }
+            if case .fullScreen(let focus) = observation, let id = focus.window.bundleID,
+               let kind = displays[id], (kind == .notched) != focus.window.notched {
+                scoped.remove(id)
+            }
+            try session.appRules.update(scoped)
+            guard settling.shouldApply(observation, at: time) else { return }
             switch observation {
             case .fullScreen(let focus):
                 let window = focus.window
                 let playing = settings.autoHideDuringPlayback && playback.isPlaying(in: focus.ownerPID, at: time)
                 let mode = settings.mode(for: window.bundleID, notched: window.notched, playingMedia: playing)
-                try visibility?.update(mode.visibility)
+                if let id = window.bundleID, session.appRules.prepared.contains(id) {
+                    try session.appRules.check(id)
+                    if let current = visibility?.current { try visibility?.update(current) }
+                } else {
+                    try visibility?.update(mode.visibility)
+                }
                 updateStatus("\(window.appName) · \(mode.title)\(playing ? " (playback)" : "")")
             case .desktop(let notched):
                 let defaultMode = settings.mode(for: nil, notched: notched)

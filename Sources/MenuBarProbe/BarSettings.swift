@@ -66,6 +66,30 @@ struct BarSettings: Codable {
         apps = try values.decode([AppRule].self, forKey: .apps)
     }
 
+    var displayDependentAppIDs: Set<String> {
+        Set(apps.compactMap { app in
+            let (notched, unnotched) = displayModes(for: app)
+            guard notched != unnotched, notched == .show || unnotched == .show,
+                  app.modes.notched != nil || app.modes.unnotched != nil else { return nil }
+            return app.id
+        })
+    }
+
+    func scopedVisibleExceptions(on assignments: [String: DisplayKind], isPlaying: (String) -> Bool) -> Set<String> {
+        Set(apps.compactMap { app in
+            guard AppVisibilityRules.isBundleID(app.id), app.modes.notched != nil || app.modes.unnotched != nil else { return nil }
+            let (notched, unnotched) = displayModes(for: app)
+            let keepVisible = notched == unnotched ? notched == .show :
+                assignments[app.id].map { ($0 == .notched ? notched : unnotched) == .show } == true
+            guard keepVisible, !autoHideDuringPlayback || !isPlaying(app.id) else { return nil }
+            return app.id
+        })
+    }
+
+    private func displayModes(for app: AppRule) -> (BarMode, BarMode) {
+        (app.modes.notched ?? displays.notched ?? .system, app.modes.unnotched ?? displays.unnotched ?? .system)
+    }
+
     func mode(for bundleID: String?, notched: Bool, playingMedia: Bool = false) -> BarMode {
         if autoHideDuringPlayback && playingMedia { return .hide }
         let kind: DisplayKind = notched ? .notched : .unnotched
